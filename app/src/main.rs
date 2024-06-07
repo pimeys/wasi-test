@@ -20,8 +20,14 @@ impl WasiView for State {
     }
 }
 
-fn main() -> anyhow::Result<()> {
-    let engine = Engine::new(Config::new().wasm_component_model(true))?;
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let mut config = Config::new();
+    config.wasm_component_model(true);
+    config.async_support(true);
+    config.consume_fuel(true);
+
+    let engine = Engine::new(&config)?;
 
     let component =
         Component::from_file(&engine, "../hello/target/wasm32-wasi/release/hello.wasm")?;
@@ -30,6 +36,7 @@ fn main() -> anyhow::Result<()> {
         .inherit_stdout()
         .inherit_stderr()
         .inherit_env()
+        .inherit_network()
         .build();
 
     let state = State {
@@ -38,20 +45,24 @@ fn main() -> anyhow::Result<()> {
     };
 
     let mut store = Store::new(&engine, state);
+    store.set_fuel(u64::MAX)?;
+    store.fuel_async_yield_interval(Some(10000))?;
 
     let mut linker = Linker::<State>::new(&engine);
-    wasmtime_wasi::add_to_linker_sync(&mut linker)?;
+    wasmtime_wasi::add_to_linker_async(&mut linker)?;
 
     let instance = linker
-        .instantiate(&mut store, &component)
+        .instantiate_async(&mut store, &component)
+        .await
         .context("linker")?;
 
     let fun = instance
         .get_typed_func::<(String,), (String,)>(&mut store, "hello-world")
         .context("get func")?;
 
-    let result = fun
-        .call(&mut store, (String::from("World"),))
+    let (result,) = fun
+        .call_async(&mut store, (String::from("World"),))
+        .await
         .context("call")?;
 
     dbg!(result);
