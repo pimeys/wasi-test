@@ -1,0 +1,12 @@
+package component:hello;
+
+/// An example world for the component to target.
+world example {
+    resource headers {
+        get: func(name: string) -> option<string>; 
+
+        set: func(name: string, value: string);
+    }
+
+    export request-callback: func(headers: headers) -> result<_, string>;
+}
