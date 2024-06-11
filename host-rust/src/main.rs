@@ -1,7 +1,7 @@
 use anyhow::Context;
 use std::collections::HashMap;
 use wasmtime::{
-    component::{Component, Linker, Resource, ResourceType},
+    component::{Component, ComponentType, Lift, Linker, Resource, ResourceType},
     Config, Engine, Store,
 };
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiView};
@@ -19,6 +19,13 @@ impl WasiView for State {
     fn ctx(&mut self) -> &mut WasiCtx {
         &mut self.ctx
     }
+}
+
+#[derive(Clone, ComponentType, Lift, Debug)]
+#[component(record)]
+pub struct ErrorResponse {
+    pub status: Option<u16>,
+    pub message: String,
 }
 
 #[tokio::main]
@@ -97,7 +104,7 @@ async fn exec(engine: &Engine, component: &Component) -> anyhow::Result<()> {
         .context("linker")?;
 
     let fun = instance
-        .get_typed_func::<(Resource<Headers>,), (Result<(), String>,)>(
+        .get_typed_func::<(Resource<Headers>,), (Result<(), ErrorResponse>,)>(
             &mut store,
             "request-callback",
         )

@@ -5,10 +5,15 @@ interface types {
         get: func(name: string) -> option<string>; 
         set: func(name: string, value: string);
     }
+
+    record error-response {
+        status: option<u16>,
+        message: string,
+    }
 }
 
 world example {
-    use types.{headers};
+    use types.{headers, error-response};
 
-    export request-callback: func(headers: headers) -> result<_, string>;
+    export request-callback: func(headers: headers) -> result<_, error-response>;
 }
