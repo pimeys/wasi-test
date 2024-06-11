@@ -1,12 +1,14 @@
 package component:hello;
 
-/// An example world for the component to target.
-world example {
+interface types {
     resource headers {
         get: func(name: string) -> option<string>; 
-
         set: func(name: string, value: string);
     }
+}
+
+world example {
+    use types.{headers};
 
     export request-callback: func(headers: headers) -> result<_, string>;
 }

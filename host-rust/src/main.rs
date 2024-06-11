@@ -21,21 +21,6 @@ impl WasiView for State {
     }
 }
 
-#[derive(Default)]
-struct Headers {
-    inner: HashMap<String, String>,
-}
-
-impl Headers {
-    fn set(&mut self, key: String, value: String) {
-        self.inner.insert(key, value);
-    }
-
-    fn get(&self, key: String) -> Option<String> {
-        self.inner.get(&key).cloned()
-    }
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let mut config = Config::new();
@@ -55,6 +40,8 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+type Headers = HashMap<String, String>;
+
 async fn exec(engine: &Engine, component: &Component) -> anyhow::Result<()> {
     let wasi = WasiCtxBuilder::new()
         .inherit_stdout()
@@ -65,7 +52,11 @@ async fn exec(engine: &Engine, component: &Component) -> anyhow::Result<()> {
 
     let mut table = ResourceTable::new();
 
-    let headers = table.push(Headers::default())?;
+    let mut headers = Headers::default();
+    headers.insert(String::from("kekw"), String::from("copium"));
+
+    let headers = table.push(headers)?;
+    let headers_rep = headers.rep();
 
     let state = State { ctx: wasi, table };
 
@@ -76,33 +67,29 @@ async fn exec(engine: &Engine, component: &Component) -> anyhow::Result<()> {
     let mut linker = Linker::<State>::new(engine);
     wasmtime_wasi::add_to_linker_async(&mut linker)?;
 
-    linker
-        .root()
-        .resource("headers", ResourceType::host::<Headers>(), |_, _| Ok(()))?;
+    let mut types = linker.instance("component:hello/types")?;
 
-    linker
-        .root()
-        .func_wrap::<_, (Resource<Headers>, String, String), ()>(
-            "[method]headers.set",
-            move |mut store, (resource, key, val)| {
-                let headers = store.data_mut().table.get_mut(&resource).unwrap();
-                headers.set(key, val);
+    types.resource("headers", ResourceType::host::<Headers>(), |_, _| Ok(()))?;
 
-                Ok(())
-            },
-        )?;
+    types.func_wrap::<_, (Resource<Headers>, String, String), ()>(
+        "[method]headers.set",
+        move |mut store, (resource, key, val)| {
+            let headers = store.data_mut().table.get_mut(&resource).unwrap();
+            headers.insert(key, val);
 
-    linker
-        .root()
-        .func_wrap::<_, (Resource<Headers>, String), (Option<String>,)>(
-            "[method]headers.get",
-            move |mut store, (resource, key)| {
-                let headers = store.data_mut().table.get_mut(&resource).unwrap();
-                let val = headers.get(key);
+            Ok(())
+        },
+    )?;
 
-                Ok((val,))
-            },
-        )?;
+    types.func_wrap::<_, (Resource<Headers>, String), (Option<String>,)>(
+        "[method]headers.get",
+        move |mut store, (resource, key)| {
+            let headers = store.data_mut().table.get_mut(&resource).unwrap();
+            let val = headers.get(&key).cloned();
+
+            Ok((val,))
+        },
+    )?;
 
     let instance = linker
         .instantiate_async(&mut store, component)
@@ -122,6 +109,13 @@ async fn exec(engine: &Engine, component: &Component) -> anyhow::Result<()> {
         .context("call")?;
 
     let _ = dbg!(res);
+
+    let headers = store
+        .data_mut()
+        .table
+        .delete(Resource::<Headers>::new_own(headers_rep));
+
+    let _ = dbg!(headers);
 
     Ok(())
 }
